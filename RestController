@@ -1,0 +1,149 @@
+// ProductController.java
+@RestController
+@RequestMapping("/api/products")
+@Slf4j
+@Validated
+public class ProductController {
+    
+    @Autowired
+    private ProductService productService;
+    
+    @GetMapping
+    public ResponseEntity<PagedResponse<ProductDto>> searchProducts(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
+        
+        ProductSearchCriteria criteria = ProductSearchCriteria.builder()
+            .keyword(keyword)
+            .categoryId(categoryId)
+            .minPrice(minPrice)
+            .maxPrice(maxPrice)
+            .build();
+        
+        Sort.Direction direction = sortDir.equalsIgnoreCase("desc") ? 
+            Sort.Direction.DESC : Sort.Direction.ASC;
+        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
+        
+        Page<ProductDto> products = productService.findProducts(criteria, pageable);
+        
+        PagedResponse<ProductDto> response = PagedResponse.<ProductDto>builder()
+            .content(products.getContent())
+            .page(products.getNumber())
+            .size(products.getSize())
+            .totalElements(products.getTotalElements())
+            .totalPages(products.getTotalPages())
+            .isFirst(products.isFirst())
+            .isLast(products.isLast())
+            .build();
+        
+        return ResponseEntity.ok(response);
+    }
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<ProductDto> getProduct(@PathVariable Long id) {
+        ProductDto product = productService.findById(id);
+        return ResponseEntity.ok(product);
+    }
+    
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SELLER')")
+    public ResponseEntity<ProductDto> createProduct(
+            @Valid @RequestBody CreateProductRequest request) {
+        
+        ProductDto product = productService.createProduct(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(product);
+    }
+    
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SELLER')")
+    public ResponseEntity<ProductDto> updateProduct(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateProductRequest request) {
+        
+        ProductDto product = productService.updateProduct(id, request);
+        return ResponseEntity.ok(product);
+    }
+    
+    @PatchMapping("/{id}/stock")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SELLER')")
+    public ResponseEntity<ProductDto> updateStock(
+            @PathVariable Long id,
+            @RequestParam Integer stock) {
+        
+        ProductDto product = productService.updateStock(id, stock);
+        return ResponseEntity.ok(product);
+    }
+    
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+        productService.deleteProduct(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+// CartController.java
+@RestController
+@RequestMapping("/api/cart")
+@Slf4j
+public class CartController {
+    
+    @Autowired
+    private CartService cartService;
+    
+    @GetMapping
+    public ResponseEntity<CartDto> getCart(Authentication auth) {
+        Long userId = getUserId(auth);
+        CartDto cart = cartService.getCart(userId);
+        return ResponseEntity.ok(cart);
+    }
+    
+    @PostMapping("/items")
+    public ResponseEntity<CartDto> addToCart(
+            @Valid @RequestBody AddToCartRequest request,
+            Authentication auth) {
+        
+        Long userId = getUserId(auth);
+        CartDto cart = cartService.addToCart(userId, request);
+        return ResponseEntity.ok(cart);
+    }
+    
+    @PutMapping("/items/{productId}")
+    public ResponseEntity<CartDto> updateCartItem(
+            @PathVariable Long productId,
+            @RequestParam Integer quantity,
+            Authentication auth) {
+        
+        Long userId = getUserId(auth);
+        CartDto cart = cartService.updateCartItem(userId, productId, quantity);
+        return ResponseEntity.ok(cart);
+    }
+    
+    @DeleteMapping("/items/{productId}")
+    public ResponseEntity<CartDto> removeFromCart(
+            @PathVariable Long productId,
+            Authentication auth) {
+        
+        Long userId = getUserId(auth);
+        CartDto cart = cartService.removeFromCart(userId, productId);
+        return ResponseEntity.ok(cart);
+    }
+    
+    @DeleteMapping
+    public ResponseEntity<Void> clearCart(Authentication auth) {
+        Long userId = getUserId(auth);
+        cartService.clearCart(userId);
+        return ResponseEntity.noContent().build();
+    }
+    
+    private Long getUserId(Authentication auth) {
+        UserPrincipal userPrincipal = (UserPrincipal) auth.getPrincipal();
+        return userPrincipal.getId();
+    }
+}
